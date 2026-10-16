@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Steam Account Calculator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #1b2838 0%, #2a475e 100%);
+    color: #c7d5e0; display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: rgba(23, 34, 48, 0.95);
+    border: 1px solid #2a475e;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 720px; width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  h1 { margin: 0 0 8px; font-size: 24px; color: #fff; }
+  .sub { color: #8f98a0; font-size: 14px; margin-bottom: 24px; }
+  .row { display: flex; gap: 10px; }
+  input {
+    flex: 1; padding: 14px 16px; font-size: 15px;
+    background: #16202d; border: 1px solid #2a475e; border-radius: 8px;
+    color: #fff; outline: none;
+  }
+  input:focus { border-color: #66c0f4; }
+  button {
+    padding: 14px 24px; font-size: 15px; font-weight: 600;
+    background: linear-gradient(135deg, #66c0f4, #1a9fff);
+    color: #0e1a26; border: none; border-radius: 8px; cursor: pointer;
+    transition: transform .1s;
+  }
+  button:hover { transform: translateY(-1px); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .result { margin-top: 28px; display: none; }
+  .result.show { display: block; }
+  .profile { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; }
+  .profile img { width: 64px; height: 64px; border-radius: 8px; }
+  .profile .name { font-size: 18px; font-weight: 600; color: #fff; }
+  .profile a { color: #66c0f4; font-size: 13px; text-decoration: none; }
+  .price {
+    background: linear-gradient(135deg, #1a9fff22, #66c0f422);
+    border: 1px solid #66c0f4;
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    text-align: center;
+  }
+  .price .label { color: #8f98a0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+  .price .value { font-size: 38px; font-weight: 700; color: #fff; margin: 8px 0; }
+  .price .range { color: #66c0f4; font-size: 15px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat {
+    background: #16202d; border: 1px solid #2a475e;
+    border-radius: 10px; padding: 14px; text-align: center;
+  }
+  .stat .n { font-size: 22px; font-weight: 700; color: #fff; }
+  .stat .l { font-size: 12px; color: #8f98a0; margin-top: 4px; }
+  .breakdown { font-size: 14px; }
+  .breakdown .line {
+    display: flex; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px dashed #2a475e;
+  }
+  .breakdown .line:last-child { border: none; font-weight: 600; color: #fff; }
+  .top-games { margin-top: 20px; }
+  .top-games h3 { font-size: 14px; color: #8f98a0; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .game {
+    display: flex; justify-content: space-between;
+    padding: 6px 0; font-size: 14px;
+  }
+  .game .h { color: #66c0f4; }
+  .error { color: #ff6b6b; margin-top: 16px; }
+  .note { font-size: 12px; color: #8f98a0; margin-top: 20px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🎮 Steam Account Calculator</h1>
+  <div class="sub">Вставь ссылку на профиль Steam, SteamID64 или custom URL</div>
+
+  <div class="row">
+    <input id="inp" placeholder="https://steamcommunity.com/id/gaben" />
+    <button id="btn" onclick="analyze()">Анализ</button>
+  </div>
+
+  <div id="error" class="error"></div>
+  <div id="result" class="result"></div>
+
+  <div class="note">
+    ⚠️ Оценка ориентировочная и не является офертой. Профиль и «Детали игр» должны быть открыты.
+  </div>
+</div>
+
+<script>
+async function analyze() {
+  const btn = document.getElementById('btn');
+  const inp = document.getElementById('inp');
+  const err = document.getElementById('error');
+  const res = document.getElementById('result');
+
+  const val = inp.value.trim();
+  if (!val) return;
+
+  btn.disabled = true;
+  btn.textContent = '...';
+  err.textContent = '';
+  res.classList.remove('show');
+
+  try {
+    const r = await fetch('/api/analyze?steam=' + encodeURIComponent(val));
+    const data = await r.json();
+
+    if (!r.ok) throw new Error(data.detail || 'Ошибка');
+
+    if (data.error) {
+      err.textContent = '🔒 ' + data.error;
+      return;
+    }
+
+    render(data);
+    res.classList.add('show');
+  } catch (e) {
+    err.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Анализ';
+  }
+}
+
+function render(data) {
+  const p = data.profile;
+  const e = data.estimate;
+
+  const gamesHtml = data.top_games.map(g =>
+    `<div class="game"><span>${escapeHtml(g.name || 'Unknown')}</span><span class="h">${g.hours} ч</span></div>`
+  ).join('');
+
+  document.getElementById('result').innerHTML = `
+    <div class="profile">
+      <img src="${p.avatar}" alt="">
+      <div>
+        <div class="name">${escapeHtml(p.name)}</div>
+        <a href="${p.profile_url}" target="_blank">Открыть профиль →</a>
+      </div>
+    </div>
+
+    <div class="price">
+      <div class="label">Ориентировочная стоимость</div>
+      <div class="value">${e.total_rub.toLocaleString('ru-RU')} ₽</div>
+      <div class="range">Вилка: ${e.price_range[0].toLocaleString('ru-RU')} – ${e.price_range[1].toLocaleString('ru-RU')} ₽</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n">${e.total_games}</div><div class="l">Игр</div></div>
+      <div class="stat"><div class="n">${e.total_hours}</div><div class="l">Часов</div></div>
+      <div class="stat"><div class="n">${e.ach_pct}%</div><div class="l">Достижений</div></div>
+    </div>
+
+    <div class="breakdown">
+      <div class="line"><span>Библиотека (30% от суммы магазина)</span><span>${e.lib_rub.toLocaleString('ru-RU')} ₽</span></div>
+      <div class="line"><span>Часы (${e.total_hours} ч × 1.2 ₽)</span><span>${e.hours_rub.toLocaleString('ru-RU')} ₽</span></div>
+      <div class="line"><span>Достижения (${e.ach_unlocked}/${e.ach_total})</span><span>${e.ach_rub.toLocaleString('ru-RU')} ₽</span></div>
+      <div class="line"><span>Итого</span><span>${e.total_rub.toLocaleString('ru-RU')} ₽</span></div>
+    </div>
+
+    <div class="top-games">
+      <h3>Топ-10 игр по времени</h3>
+      ${gamesHtml}
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+document.getElementById('inp').addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyze();
+});
+</script>
+</body>
+</html>
